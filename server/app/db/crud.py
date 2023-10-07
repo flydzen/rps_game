@@ -1,12 +1,11 @@
-from sqlalchemy import and_, select, func, union_all, values, literal
-from sqlalchemy.orm import Session
 import hashlib
-
-from . import models, schemas
-from .models import LeaderBoard
-from .schemas import GameCreate, User
-from ..config import SALT
 from functools import reduce
+
+from sqlalchemy import func, literal, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import models, schemas
+from app.config import SALT
 
 
 def pwd_hash(pwd: str):
@@ -19,81 +18,73 @@ def pwd_hash(pwd: str):
     return reduce(lambda res, f: f(res).encode('utf-8'), steps, pwd).decode()
 
 
-def get_users_results(db: Session, offset: int = 0, limit: int = 20):
-    sub_wins = db.query(
-        models.User.login.label('login'),
-        func.count(models.Game.winner).label('wins'),
-        literal(0).label('losses')
-    ) \
-        .join(models.Game, models.User.login == models.Game.winner) \
-        .group_by(models.User.login)
+class CRUD:
+    @staticmethod
+    async def get_users_results(db: AsyncSession, offset: int = 0, limit: int = 20):
+        stmt = select(
+            func.rank().over(order_by=models.User.victories.desc()),
+            models.User.login,
+            models.User.victories,
+            models.User.losses,
+        ).order_by(
+            models.User.victories.desc()
+        ).offset(offset).limit(limit)
 
-    sub_loses = db.query(
-        models.User.login.label('login'),
-        literal(0).label('wins'),
-        func.count(models.Game.loser).label('losses')
-    ) \
-        .join(models.Game, models.User.login == models.Game.loser) \
-        .group_by(models.User.login)
+        result = (await db.execute(stmt)).all()
+        return [models.LeaderBoard.from_args(*res) for res in result]
 
-    union_query = union_all(sub_wins, sub_loses)
+    @staticmethod
+    async def get_user_result(db: AsyncSession, login: str):
+        cte1 = select(
+            models.User.login, models.User.victories, models.User.losses
+        ).filter_by(login=login).cte('cte1')
+        cte2 = select(
+            1 + func.count(models.User.victories).label('place')
+        ).where(models.User.victories > select(cte1.c.victories).scalar_subquery()).cte('cte2')
+        stmt = select(cte2, cte1).join(cte1, literal(True))
 
-    final_query = db.query(
-        union_query.c.login,
-        func.sum(union_query.c.wins).label('wins'),
-        func.sum(union_query.c.losses).label('losses')
-    ) \
-        .group_by(union_query.c.login) \
-        .order_by(func.sum(union_query.c.wins).desc()) \
-        .offset(offset) \
-        .limit(limit)
+        result = (await db.execute(stmt)).first()
+        if result:
+            return models.LeaderBoard.from_args(*result)
+        return None
 
-    result = final_query.all()
-    return [LeaderBoard.from_args(i, *row) for i, row in enumerate(result, start=offset)]
+    @staticmethod
+    async def create_user(db: AsyncSession, user: schemas.UserCreate):
+        hashed_password = pwd_hash(user.password)
+        db_user = models.User(login=user.login, hashed_password=hashed_password)
+        db.add(db_user)
+        await db.commit()
+        await db.refresh(db_user)
+        return db_user
 
+    @staticmethod
+    async def check_user(db: AsyncSession, user: schemas.UserCreate):
+        hashed_password = pwd_hash(user.password)
 
-def get_user_result(db: Session, user: User):
-    wins_subquery = db.query(func.count().label('wins')) \
-        .filter(models.Game.winner == user.login) \
-        .subquery()
+        stmt = select(models.User).filter_by(login=user.login, hashed_password=hashed_password)
+        result = await db.execute(stmt)
+        return result.scalar_one() is not None
 
-    loses_subquery = db.query(func.count().label('loses')) \
-        .filter(models.Game.loser == user.login) \
-        .subquery()
-
-    final_query = db.query(wins_subquery.c.wins, loses_subquery.c.loses)
-
-    db.query(models.User.login).filter(models.Game).count()
-
-    return LeaderBoard.from_args(0, user.login, *final_query.one())
-
-
-def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = pwd_hash(user.password)
-    db_user = models.User(login=user.login, hashed_password=hashed_password)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
-
-
-def check_user(db: Session, user: schemas.UserCreate):
-    hashed_password = pwd_hash(user.password)
-    print(hashed_password)
-    return db.query(models.User).filter(
-        and_(
-            models.User.login == user.login,
-            models.User.hashed_password == hashed_password,
+    @staticmethod
+    async def inc_victories(db: AsyncSession, login: str):
+        await db.execute(
+            update(models.User)
+            .filter_by(login=login)
+            .values(victories=models.User.victories + 1)
         )
-    ).first() is not None
+        await db.commit()
 
+    @staticmethod
+    async def inc_losses(db: AsyncSession, login: str):
+        await db.execute(
+            update(models.User)
+            .filter_by(login=login)
+            .values(losses=models.User.losses + 1)
+        )
+        await db.commit()
 
-def check_login(db: Session, login: str):
-    return db.query(models.User).filter_by(login=login).first() is not None
-
-
-def create_game(db: Session, game: GameCreate):
-    db_item = models.Game(**game.model_dump())
-    db.add(db_item)
-    db.commit()
-    return db.refresh(db_item)
+    @staticmethod
+    async def get_user(db: AsyncSession, login: str):
+        stmt = select(models.User).filter_by(login=login)
+        result = await db.execute(stmt)
+        return result.scalar()

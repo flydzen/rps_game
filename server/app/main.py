@@ -1,24 +1,35 @@
-from typing import Annotated, Optional, List
+from typing import Annotated, List, Optional
 
-import pydantic
-import sqlalchemy.engine.row
-from fastapi import FastAPI, WebSocket, HTTPException, Response, WebSocketDisconnect, WebSocketException, Cookie, \
-    Depends
-from sqlalchemy.orm import Session
-from websockets.exceptions import ConnectionClosedError
-from fastapi.middleware.cors import CORSMiddleware
 import jwt
-from .config import JWT_PRIVATE, JWT_PUBLIC
+import pydantic
+from fastapi import (
+    Cookie,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
+from websockets.exceptions import ConnectionClosedError
 
-from server.app.schemas.ws import ActionRequest
-from .db import schemas, crud
-from .db.database import get_db
-from .db.models import LeaderBoard
-from .db.schemas import User as UserDB
-from .game_logic import state, Game
-from server.app.schemas.http import AuthRequest, UserAuthResponse
+from app.config import JWT_PRIVATE, JWT_PUBLIC
+from app.db import schemas
+from app.db.crud import CRUD
+from app.db.database import Base, engine, get_db
+from app.db.models import LeaderBoard
+from app.game.state import State
+from app.game.game import Game
+from app.schemas.http import AuthRequest, UserAuthResponse
+from app.schemas.ws import ActionRequest
+
 
 app = FastAPI()
+state = State()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -32,6 +43,12 @@ app.add_middleware(
 )
 
 
+@app.on_event('startup')
+async def startup_event():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 def gen_token_response(user: str) -> Response:
     token = jwt.encode(
         payload={'login': user},
@@ -43,15 +60,18 @@ def gen_token_response(user: str) -> Response:
     return response
 
 
-def authorization(session: Annotated[Optional[str], Cookie()] = None) -> str:
+async def authorization(session: Annotated[Optional[str], Cookie()] = None, db: AsyncSession = Depends(get_db)) -> str:
     if session is None:
         raise HTTPException(403)
     try:
         decoded: dict = jwt.decode(session, JWT_PUBLIC, algorithms=["RS256"])
         user_login: str = decoded['login']
+        user = await CRUD.get_user(db, user_login)
+        if user is None:
+            raise HTTPException(403)
+        return user.login
     except Exception:
         raise HTTPException(403)
-    return user_login
 
 
 @app.get('/')
@@ -60,22 +80,27 @@ async def root():
 
 
 @app.post('/users/signup')
-async def signup(user: AuthRequest, db: Session = Depends(get_db)):
-    if crud.check_login(db, login=user.login):
+async def signup(user: AuthRequest, db: AsyncSession = Depends(get_db)):
+    if await CRUD.get_user(db, login=user.login):
         raise HTTPException(409, 'already in use')
-    crud.create_user(db, schemas.UserCreate(**user.model_dump()))
+    await CRUD.create_user(db, schemas.UserCreate(**user.model_dump()))
     return gen_token_response(user.login)
 
 
 @app.post('/users/signin')
-async def signin(user: AuthRequest, db: Session = Depends(get_db)):
-    if not crud.check_user(db, schemas.UserCreate(**user.model_dump())):
+async def signin(user: AuthRequest, db: AsyncSession = Depends(get_db)):
+    if not await CRUD.check_user(db, schemas.UserCreate(**user.model_dump())):
         raise HTTPException(403, 'wrong name/password')
     return gen_token_response(user.login)
 
 
 @app.post('/users/token')
-async def token(user: Annotated[Optional[str], Depends(authorization)]) -> UserAuthResponse:
+async def token(
+    user: Annotated[Optional[str], Depends(authorization)],
+    db: AsyncSession = Depends(get_db)
+) -> UserAuthResponse:
+    if not await CRUD.get_user(db, login=user):
+        raise HTTPException(403)
     return UserAuthResponse(login=user)
 
 
@@ -87,22 +112,20 @@ async def token():
 
 
 @app.get('/leaderboard')
-async def leaderboard(offset: int = 0, limit: int = 20, db: Session = Depends(get_db)) -> List[LeaderBoard]:
-    return crud.get_users_results(db, offset=offset, limit=limit)
+async def leaderboard(offset: int = 0, limit: int = 20, db: AsyncSession = Depends(get_db)) -> List[LeaderBoard]:
+    return await CRUD.get_users_results(db, offset=offset, limit=limit)
 
 
 @app.get('/leaderboard/user/{login}')
-async def leaderboard(login: str, db: Session = Depends(get_db)):
-    results = crud.get_user_result(db, UserDB(login=login))
-    print(results)
-    return results
+async def leaderboard(login: str, db: AsyncSession = Depends(get_db)):
+    return await CRUD.get_user_result(db, login)
 
 
 @app.websocket("/game")
 async def websocket_endpoint(
         websocket: WebSocket,
         user: Annotated[Optional[str], Depends(authorization)],
-        db: Session = Depends(get_db),
+        db: AsyncSession = Depends(get_db),
 ):
     try:
         await websocket.accept()

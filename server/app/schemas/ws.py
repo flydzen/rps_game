@@ -1,9 +1,8 @@
 from typing import Optional
 
 from pydantic import BaseModel
-from enum import Enum
 
-from server.app.enums import GameStatus, Cast, PublicCast
+from app.enums import Cast, GameStatus, PublicCast
 
 
 class ActionRequest(BaseModel):

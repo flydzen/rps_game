@@ -1,25 +1,4 @@
-from datetime import datetime
-from typing import Union
-from uuid import UUID
-
 from pydantic import BaseModel
-
-
-class GameBase(BaseModel):
-    winner: str
-    loser: str
-
-
-class GameCreate(GameBase):
-    pass
-
-
-class Game(GameBase):
-    id: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class UserBase(BaseModel):
@@ -31,5 +10,8 @@ class UserCreate(UserBase):
 
 
 class User(UserBase):
+    victories: int
+    losses: int
+
     class Config:
         from_attributes = True
