@@ -9,9 +9,7 @@
   },
   "dependencies": {
     "vue": "^3.3.4",
-    "axios": "^1.5.1",
-    "js-cookie": "^3.0.5",
-    "jose": "^4.15.2"
+    "axios": "^1.5.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.3.4",

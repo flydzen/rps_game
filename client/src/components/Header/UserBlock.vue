@@ -1,9 +1,7 @@
 <script>
 import AuthorizedBlock from "@/components/Header/AuthorizedBlock.vue";
 import UnauthorizedBlock from "@/components/Header/UnauthorizedBlock.vue";
-import Cookies from "js-cookie";
-import * as jose from "jose";
-import {JWKS, server_http_url} from "@/config";
+import {server_http_url} from "@/config";
 import axios from "axios";
 
 export default {
