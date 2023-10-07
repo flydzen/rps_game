@@ -8,7 +8,7 @@ export default {
         },
         user: {
             type: String,
-            
+
         }
     }
 }
@@ -18,8 +18,8 @@ export default {
     <tr>
         <th> {{ item.position }}</th>
         <th> {{ item.login }}</th>
-        <th> {{ item.wins }}</th>
-        <th> {{ item.loses }}</th>
+        <th> {{ item.victories }}</th>
+        <th> {{ item.losses }}</th>
     </tr>
 </template>
 

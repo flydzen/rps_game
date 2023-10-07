@@ -6,22 +6,45 @@ import {server_http_url} from "@/config";
 export default {
     name: "LeaderBoard",
     components: {LeaderBoardItem},
+    props: {
+        user: {
+            type: String,
+            required: false,
+        },
+    },
     methods: {
-        async loadLeaders() {
+        async getLeaderboard() {
             await axios.get(
-                server_http_url + '/leaderboard'
+                server_http_url + '/leaderboard?limit=100'
             ).then(
                 response => this.items = response.data
             );
-        }
+        },
+        async getUserScore() {
+            await axios.get(
+                server_http_url + '/leaderboard/user/' + this.user
+            ).then(
+                response => this.userScore = response.data
+            );
+        },
     },
     data() {
         return {
-            items: []
+            items: [],
+            userScore: null,
         };
     },
     created() {
-        this.loadLeaders();
+        this.getLeaderboard();
+    },
+    watch: {
+        user: {
+            handler(value) {
+                if (this.user !== null)
+                    this.getUserScore()
+            },
+            immediate: true,
+        }
     }
 }
 </script>
@@ -32,14 +55,17 @@ export default {
         <div id="table-container">
             <table>
                 <thead>
-                <tr>
-                    <th>№</th>
-                    <th>Login</th>
-                    <th>Wins</th>
-                    <th>Loses</th>
-                </tr>
+                <LeaderBoardItem id="item-header" :item=
+                    "{
+                        position: '№',
+                        login: 'login',
+                        victories: 'victories',
+                        losses: 'losses',
+                    }"
+                />
                 </thead>
                 <tbody>
+                <LeaderBoardItem id="row-self" v-if="userScore !== null" :item="userScore"/>
                 <LeaderBoardItem v-for="item in items" :item="item"/>
                 </tbody>
             </table>
@@ -61,9 +87,13 @@ export default {
     border-radius: 10px;
 }
 
-#table-container thead th {
+#table-container thead #item-header > ::v-deep(th) {
     position: sticky;
     top: -10px;
+}
+
+#row-self > ::v-deep(th) {
+    background-color: #3F3C49;
 }
 
 table {
@@ -79,13 +109,7 @@ thead {
     color: #4c63bb;
 }
 
-th, td {
-    border: 2px solid #2e2e31;
-    text-align: left;
-    padding: 8px;
-}
-
-th {
+#item-header > ::v-deep(th) {
     background-color: #242424;
 }
 
