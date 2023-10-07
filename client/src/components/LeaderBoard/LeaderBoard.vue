@@ -51,7 +51,7 @@ export default {
 
 <template>
     <div class="container">
-        <h1>Таблица лидеров</h1>
+        <h1>Leaderboard</h1>
         <div id="table-container">
             <table>
                 <thead>

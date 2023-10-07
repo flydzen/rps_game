@@ -33,14 +33,14 @@ export default {
 <template>
     <header>
         <div class="header-item left-item" id="header-title">
-            <p>Камень ножницы бумага</p>
+            <p>Rock Paper Scissors</p>
         </div>
         <div class="header-item center-item">
             <button id="leave-game-button" v-if="inGame" @click="this.$emit('update:in-game', false)">
-                Покинуть игру
+                Leave
             </button>
             <button id="start-game-button" v-else @click="onStart">
-                Начать игру
+                New game
             </button>
         </div>
         <UserBlock class="header-item right-item" :user="user" @update:user="onSignIn"/>

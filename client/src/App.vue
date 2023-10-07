@@ -7,7 +7,7 @@ export default {
     components: {LeaderBoard, MyHeader, Game},
     data() {
         return {
-            inGame: false, // SET TO TRUE TO DEBUG GAME WINDOW
+            inGame: false,
             // user: {login: 'Anon', token: 'token'}, // ENABLE WHEN DEBUG
             user: null,
         }

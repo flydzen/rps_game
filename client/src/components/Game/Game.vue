@@ -44,7 +44,7 @@ export default {
             });
 
             this.websocket.addEventListener('message', (event) => {
-                console.log('Получено сообщение:', event.data);
+                console.log('Msg received:', event.data);
                 this.onMessage(JSON.parse(event.data));
             });
 
@@ -53,10 +53,10 @@ export default {
             });
 
             this.websocket.addEventListener('error', (error) => {
-                console.error('Произошла ошибка WebSocket:', error);
+                console.error('WebSocket error:', error);
                 this.isConnected = false;
                 this.closeGame();
-                alert('Какая-то ошибка.');
+                alert('Unexpected error.');
             });
         },
         onMessage(message) {
