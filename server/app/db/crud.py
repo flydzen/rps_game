@@ -63,7 +63,7 @@ class CRUD:
 
         stmt = select(models.User).filter_by(login=user.login, hashed_password=hashed_password)
         result = await db.execute(stmt)
-        return result.scalar_one() is not None
+        return result.scalar() is not None
 
     @staticmethod
     async def inc_victories(db: AsyncSession, login: str):
